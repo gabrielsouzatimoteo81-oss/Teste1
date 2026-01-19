@@ -1,0 +1,186 @@
+-- H7Z HUB - Script para Delta Executor
+-- Criado por Manus AI
+
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+local Window = Library.CreateLib("H7Z HUB", "DarkTheme")
+
+-- Variáveis de Controle
+local ESP_Enabled = false
+local ESP_Box = false
+local ESP_Line = false
+local ESP_Fire = false
+local Aimbot_Enabled = false
+local Aimbot_WallCheck = true
+local Aimkill_Enabled = false
+
+-- Tabs
+local MainTab = Window:NewTab("Principal")
+local ESPTab = Window:NewTab("Visual (ESP)")
+local CombatTab = Window:NewTab("Combate")
+
+-- Seção Principal
+local MainSection = MainTab:NewSection("H7Z HUB")
+
+MainSection:NewButton("Fechar Menu", "Fecha a interface", function()
+    Library:ToggleUI()
+end)
+
+-- Seção ESP
+local ESPSection = ESPTab:NewSection("Configurações de ESP")
+
+ESPSection:NewToggle("Ativar ESP", "Ativa/Desativa o sistema visual", function(state)
+    ESP_Enabled = state
+end)
+
+ESPSection:NewToggle("ESP Box (Branca)", "Desenha uma caixa branca nos inimigos", function(state)
+    ESP_Box = state
+end)
+
+ESPSection:NewToggle("ESP Line", "Desenha uma linha até o inimigo", function(state)
+    ESP_Line = state
+end)
+
+ESPSection:NewToggle("ESP Fire", "Marca inimigos com efeito de fogo", function(state)
+    ESP_Fire = state
+end)
+
+-- Seção Combate
+local CombatSection = CombatTab:NewSection("Aimbot & Kill")
+
+CombatSection:NewToggle("Ativar Aimbot", "Gruda a mira nos inimigos", function(state)
+    Aimbot_Enabled = state
+end)
+
+CombatSection:NewToggle("Verificar Paredes", "Aimbot só funciona se vir o inimigo", function(state)
+    Aimbot_WallCheck = state
+end)
+
+CombatSection:NewToggle("Ativar Aimkill", "Elimina quem chegar perto automaticamente", function(state)
+    Aimkill_Enabled = state
+end)
+
+-- Funções Auxiliares de ESP
+local function CreateESP(player)
+    local Box = Drawing.new("Square")
+    Box.Visible = false
+    Box.Color = Color3.fromRGB(255, 255, 255)
+    Box.Thickness = 1
+    Box.Transparency = 1
+    Box.Filled = false
+
+    local Line = Drawing.new("Line")
+    Line.Visible = false
+    Line.Color = Color3.fromRGB(255, 255, 255)
+    Line.Thickness = 1
+    Line.Transparency = 1
+
+    game:GetService("RunService").RenderStepped:Connect(function()
+        if ESP_Enabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player ~= game.Players.LocalPlayer then
+            local RootPart = player.Character.HumanoidRootPart
+            local Position, OnScreen = game.Workspace.CurrentCamera:WorldToViewportPoint(RootPart.Position)
+
+            if OnScreen then
+                -- ESP Box
+                if ESP_Box then
+                    local Size = (game.Workspace.CurrentCamera:WorldToViewportPoint(RootPart.Position - Vector3.new(0, 3, 0)).Y - game.Workspace.CurrentCamera:WorldToViewportPoint(RootPart.Position + Vector3.new(0, 2.6, 0)).Y)
+                    Box.Size = Vector2.new(Size / 1.5, Size)
+                    Box.Position = Vector2.new(Position.X - Box.Size.X / 2, Position.Y - Box.Size.Y / 2)
+                    Box.Visible = true
+                else
+                    Box.Visible = false
+                end
+
+                -- ESP Line
+                if ESP_Line then
+                    Line.From = Vector2.new(game.Workspace.CurrentCamera.ViewportSize.X / 2, game.Workspace.CurrentCamera.ViewportSize.Y)
+                    Line.To = Vector2.new(Position.X, Position.Y)
+                    Line.Visible = true
+                else
+                    Line.Visible = false
+                end
+
+                -- ESP Fire (Usando Highlight ou Partículas para efeito visual)
+                if ESP_Fire then
+                    if not player.Character:FindFirstChild("H7Z_Fire") then
+                        local highlight = Instance.new("Highlight")
+                        highlight.Name = "H7Z_Fire"
+                        highlight.Parent = player.Character
+                        highlight.FillColor = Color3.fromRGB(255, 69, 0)
+                        highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+                    end
+                else
+                    if player.Character:FindFirstChild("H7Z_Fire") then
+                        player.Character.H7Z_Fire:Destroy()
+                    end
+                end
+            else
+                Box.Visible = false
+                Line.Visible = false
+            end
+        else
+            Box.Visible = false
+            Line.Visible = false
+            if player.Character and player.Character:FindFirstChild("H7Z_Fire") then
+                player.Character.H7Z_Fire:Destroy()
+            end
+        end
+    end)
+end
+
+for _, player in pairs(game.Players:GetPlayers()) do
+    CreateESP(player)
+end
+
+game.Players.PlayerAdded:Connect(CreateESP)
+
+-- Lógica de Aimbot e Aimkill
+local function GetClosestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, player in pairs(game.Players:GetPlayers()) do
+        if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            local pos, onScreen = game.Workspace.CurrentCamera:WorldToViewportPoint(player.Character.HumanoidRootPart.Position)
+            if onScreen then
+                local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(game.Workspace.CurrentCamera.ViewportSize.X / 2, game.Workspace.CurrentCamera.ViewportSize.Y / 2)).Magnitude
+                if distance < shortestDistance then
+                    -- Verificação de Parede (Wallcheck)
+                    if Aimbot_WallCheck then
+                        local ray = Ray.new(game.Workspace.CurrentCamera.CFrame.Position, (player.Character.HumanoidRootPart.Position - game.Workspace.CurrentCamera.CFrame.Position).unit * 500)
+                        local hit, position = game.Workspace:FindPartOnRayWithIgnoreList(ray, {game.Players.LocalPlayer.Character})
+                        if hit and hit:IsDescendantOf(player.Character) then
+                            closestPlayer = player
+                            shortestDistance = distance
+                        end
+                    else
+                        closestPlayer = player
+                        shortestDistance = distance
+                    end
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+game:GetService("RunService").RenderStepped:Connect(function()
+    -- Aimbot
+    if Aimbot_Enabled then
+        local target = GetClosestPlayer()
+        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            game.Workspace.CurrentCamera.CFrame = CFrame.new(game.Workspace.CurrentCamera.CFrame.Position, target.Character.HumanoidRootPart.Position)
+        end
+    end
+
+    -- Aimkill
+    if Aimkill_Enabled then
+        for _, player in pairs(game.Players:GetPlayers()) do
+            if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
+                local distance = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                if distance < 15 then -- Distância para o Aimkill
+                    player.Character.Humanoid.Health = 0
+                end
+            end
+        end
+    end
+end)
